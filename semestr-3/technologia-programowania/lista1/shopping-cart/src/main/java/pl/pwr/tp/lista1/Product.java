@@ -1,6 +1,6 @@
 package pl.pwr.tp.lista1;
 
-/** Represents a single product wtih a name and price. */
+/** Represents a single product with a name and price. */
 public class Product {
   private final String name;
   private final double price;
@@ -13,7 +13,7 @@ public class Product {
    */
   public Product(final String name, final double price) {
     if (price < 0) {
-      throw new IllegalArgumentException("PRice cannot be negative");
+      throw new IllegalArgumentException("Price cannot be negative");
     }
     this.name = name;
     this.price = price;
