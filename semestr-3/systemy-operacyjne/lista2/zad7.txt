@@ -1,0 +1,110 @@
+Zadanie 7
+
+
+1. echo ala > /tmp/a  oraz  echo ala >> /tmp/a
+-----------------------------------------------
+Przekierowanie robi shell, dlatego sledzimy basha:
+  strace -e trace=openat,dup2,write bash -c 'echo ala > /tmp/a'
+  strace -e trace=openat,dup2,write bash -c 'echo ala >> /tmp/a'
+
+Slad dla > :
+openat(AT_FDCWD, "/tmp/a", O_WRONLY|O_CREAT|O_TRUNC, 0666) = 3
+dup2(3, 1)                              = 1
+write(1, "ala\n", 4)                    = 4
+dup2(10, 1)                             = 1
+
+Slad dla >> :
+openat(AT_FDCWD, "/tmp/a", O_WRONLY|O_CREAT|O_APPEND, 0666) = 3
+dup2(3, 1)                              = 1
+write(1, "ala\n", 4)                    = 4
+dup2(10, 1)                             = 1
+
+Shell otwiera plik (deskryptor 3), przez dup2(3, 1) podstawia go w miejsce standardowego wyjscia, echo zapisuje "ala\n" na deskryptor 1, a na koncu dup2(10, 1) przywraca zapamietane wczesniej wyjscie.
+
+Roznica jest tylko we fladze openat:
+  O_TRUNC  (>)  - plik jest czyszczony przy otwarciu,
+  O_APPEND (>>) - dane sa dopisywane na koncu pliku.
+
+
+2. Jakie pliki otwiera ls -l, /etc/ld.so.cache, getdents64
+----------------------------------------------------------
+  strace -e trace=openat,getdents64 ls -l
+
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/usr/lib/libcap.so.2", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/usr/lib/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/usr/lib/locale/locale-archive", O_RDONLY|O_CLOEXEC) = 3
+...
+openat(AT_FDCWD, ".", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 3
+getdents64(3, 0x55ab57058ed0 /* 29 entries */, 32768) = 1144
+openat(AT_FDCWD, "/etc/nsswitch.conf", O_RDONLY|O_CLOEXEC) = 4
+openat(AT_FDCWD, "/etc/passwd", O_RDONLY|O_CLOEXEC) = 4
+openat(AT_FDCWD, "/etc/group", O_RDONLY|O_CLOEXEC) = 4
+...
+getdents64(3, 0x55ab57058ed0 /* 0 entries */, 32768) = 0
+openat(AT_FDCWD, "/etc/localtime", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory)
+
+Przed wypisaniem wyniku ls -l otwiera:
+  - /etc/ld.so.cache oraz biblioteki libcap.so.2 i libc.so.6,
+  - pliki locale (ustawienia jezyka),
+  - biezacy katalog "." (O_DIRECTORY),
+  - /etc/nsswitch.conf, /etc/passwd, /etc/group - zamiana numerow UID/GID
+    na nazwy wlasciciela i grupy,
+  - /etc/localtime - strefa czasowa do wyswietlania dat.
+
+/etc/ld.so.cache to spis bibliotek wspoldzielonych i ich polozenia na dysku. Dynamiczny linker czyta go przy starcie kazdego programu, zeby szybko znalezc potrzebne biblioteki.
+
+getdents64 odczytuje wpisy katalogu (nazwy plikow). Zwraca liczbe bajtow
+zapisanych do bufora: tu 1144 bajty = 29 wpisow. Wartosc 0 oznacza koniec katalogu.
+
+
+3. strace -c ls  vs  strace -c cat duzy_plik
+--------------------------------------------
+  dd if=/dev/urandom of=duzy_plik bs=1M count=100      (plik 100 MiB)
+  strace -c ls
+  strace -c cat duzy_plik > /dev/null
+
+strace -c ls:
+% time     seconds  usecs/call     calls    errors syscall
+ 44.15    0.001242          47        26           mmap
+ 18.70    0.000526         526         1           execve
+ 13.65    0.000384          12        32        12 openat
+...
+100.00    0.002813          20       137        17 total
+
+strace -c cat duzy_plik:
+% time     seconds  usecs/call     calls    errors syscall
+ 68.13    0.002450           6       401           splice
+ 24.78    0.000891         891         1           execve
+...
+  0.17    0.000006           6         1           pipe2
+  0.06    0.000002           0         3           read
+100.00    0.003596           6       520           total
+
+W ls dominuje mmap - ladowanie bibliotek do pamieci.
+W cat dominuje splice: przepychanie danych miedzy potokami a plikami bez kopiowania.
+
+Wielkosc porcji danych:
+  strace -e trace=read cat /etc/hostname
+read(3, "Maks_Nowo\n", 262144)          = 10
+read(3, "", 262144)                     = 0
+
+cat prosi o bufor 262144 B = 256 KiB; plik ma 10 bajtow, a 0 oznacza koniec pliku.
+
+Dla duzy_plik (wyjscie do /dev/null) cat nie uzywa read, tylko splice, wiec w sladzie nie ma read z danymi. Przy wypisywaniu na terminal cat uzywa read, rozmiar bufora nie zalezy od wielkosci pliku, wiec uzylem mniejszego pliku zeby tylko pokazac jak duze porcje danych bierze.
+
+
+4. ps czyta /proc/[pid]/stat
+----------------------------
+  strace -y -e trace=openat ps 2>&1 | grep stat | head
+
+openat(AT_FDCWD</home/student>, "/proc/self/status", O_RDONLY) = 3</proc/2676/status>
+openat(3</proc/2676>, "stat", O_RDONLY) = 4</proc/2676/stat>
+openat(4</proc/1>, "stat", O_RDONLY)    = 5</proc/1/stat>
+openat(4</proc/1>, "status", O_RDONLY)  = 5</proc/1/status>
+openat(4</proc/2>, "stat", O_RDONLY)    = 5</proc/2/stat>
+openat(4</proc/2>, "status", O_RDONLY)  = 5</proc/2/status>
+openat(4</proc/3>, "stat", O_RDONLY)    = 5</proc/3/stat>
+
+ps po kolei otwiera katalog kazdego procesu /proc/<PID> i czyta z niego pliki
+stat i status. Z nich bierze informacje, ktore wypisuje (PID, stan, czas CPU itd.).

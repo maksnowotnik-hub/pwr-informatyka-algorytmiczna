@@ -1,0 +1,30 @@
+Zadanie 6 - kolory w terminalu (sekwencje Esc ANSI)
+
+Program: kolory.c
+Kompilacja i uruchomienie:
+  gcc -Wall -pedantic kolory.c -o kolory
+  ./kolory
+
+Opis:
+Program wypisuje "Hello, World!" po kolei we wszystkich kolorach terminala,
+uzywajac sekwencji Esc standardu ANSI w postaci ESC[<kod>m (ESC = \033).
+Po kazdym napisie ESC[0m przywraca domyslny kolor.
+
+1. 16 podstawowych kolorow: kody 30-37 (zwykle) i 90-97 (jasne).
+2. 256 kolorow: ESC[38;5;Nm, N = 0..255.
+3. True color (24 bity, ok. 16,7 mln kolorow): ESC[38;2;R;G;Bm.
+   Wszystkich nie da sie wypisac, wiec program pokazuje plynne przejscie
+   od czerwonego (R=255) do niebieskiego (B=255).
+
+Czy terminal moze wyswietlic 256 lub wiecej kolorow? TAK.
+  $ tput colors
+  256
+  $ echo $TERM
+  xterm-256color
+  $ echo $COLORTERM
+  truecolor
+
+tput colors i TERM=xterm-256color oznaczaja obsluge 256 kolorow,
+a COLORTERM=truecolor oznacza obsluge true color (24-bitowego RGB).
+Potwierdza to wynik programu: wszystkie 256 kolorow sa rozne, a czesc 3
+daje plynne przejscie kolorow.
